@@ -1,0 +1,16 @@
+name: pubpushRA
+
+on: workflow_dispatch
+      
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@main
+    - name: Build & Push Image
+      run: |        
+         echo "dckr_pat_jsIgLvs40eekRkvMgU6mhPJR17o" | docker login -u npt13 --password-stdin
+         docker image build -t npt13/mltbra .
+         docker push npt13/mltbra
