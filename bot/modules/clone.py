@@ -4,7 +4,6 @@ from pyrogram.filters import command
 from random import SystemRandom
 from string import ascii_letters, digits
 from asyncio import sleep, gather
-from re import split as re_split
 from aiofiles.os import path as aiopath
 from json import loads
 
@@ -14,7 +13,7 @@ from bot.helper.telegram_helper.message_utils import sendMessage, deleteMessage,
 from bot.helper.telegram_helper.filters import CustomFilters
 from bot.helper.telegram_helper.bot_commands import BotCommands
 from bot.helper.mirror_utils.status_utils.gdrive_status import GdriveStatus
-from bot.helper.ext_utils.bot_utils import is_gdrive_link, new_task, sync_to_async, is_share_link, new_task, is_rclone_path, cmd_exec, get_telegraph_list
+from bot.helper.ext_utils.bot_utils import is_gdrive_link, new_task, sync_to_async, is_share_link, new_task, is_rclone_path, cmd_exec, get_telegraph_list, arg_parser
 from bot.helper.ext_utils.exceptions import DirectDownloadLinkException
 from bot.helper.mirror_utils.download_utils.direct_link_generator import direct_link_generator
 from bot.helper.mirror_utils.rclone_utils.list import RcloneList
@@ -55,12 +54,13 @@ async def rcloneNode(client, message, link, dst_path, rcf, tag):
         if config_path != f'rclone/{message.from_user.id}.conf':
             await sendMessage(message, 'You should use same rclone.conf to clone between pathies!')
             return
+        dst_path = dst_path.lstrip('mrcc:')
     elif config_path != 'rclone.conf':
         await sendMessage(message, 'You should use same rclone.conf to clone between pathies!')
         return
 
     remote, src_path = link.split(':', 1)
-    src_path = src_path .strip('/')
+    src_path = src_path.strip('/')
 
     cmd = ['rclone', 'lsjson', '--fast-list', '--stat',
            '--no-modtime', '--config', config_path, f'{remote}:{src_path}']
@@ -166,41 +166,38 @@ async def gdcloneNode(message, link, tag):
 
 @new_task
 async def clone(client, message):
-    text = message.text
-    args = text.split(maxsplit=1)
-    link = ''
-    multi = 0
+    input_list = message.text.split(' ')
+
+    arg_base = {'link': '', '-i': 0, '-up': '', '-rcf': ''}
+
+    args = arg_parser(input_list[1:], arg_base)
+
+    try:
+        multi = int(args['-i'])
+    except:
+        multi = 0
+
+    dst_path = args['-up']
+    rcf = args['-rcf']
+    link = args['link']
 
     if username := message.from_user.username:
         tag = f"@{username}"
     else:
         tag = message.from_user.mention
 
-    if len(args) > 1:
-        arg = args[1].strip()
-        if not arg.startswith(('up:', 'rcf:')):
-            link = re_split(r' up: | rcf: ', arg)[0].strip()
-        if arg.isdigit():
-            multi = int(arg)
-            link = ''
-
-    if len(link) == 0 and (reply_to := message.reply_to_message):
+    if not link and (reply_to := message.reply_to_message):
         link = reply_to.text.split('\n', 1)[0].strip()
-
-    rcf = text.split(' rcf: ', 1)
-    rcf = re_split(' up: ', rcf[1])[0].strip() if len(rcf) > 1 else None
-
-    dst_path = text.split(' up: ', 1)
-    dst_path = re_split(' rcf: ', dst_path[1])[
-        0].strip() if len(dst_path) > 1 else None
 
     @new_task
     async def __run_multi():
         if multi > 1:
             await sleep(5)
+            msg = [s.strip() for s in input_list]
+            index = msg.index('-i')
+            msg[index+1] = f"{multi - 1}"
             nextmsg = await client.get_messages(chat_id=message.chat.id, message_ids=message.reply_to_message_id + 1)
-            args[1] = f"{multi - 1}"
-            nextmsg = await sendMessage(nextmsg, " ".join(args))
+            nextmsg = await sendMessage(nextmsg, " ".join(msg))
             nextmsg = await client.get_messages(chat_id=message.chat.id, message_ids=nextmsg.id)
             nextmsg.from_user = message.from_user
             await sleep(5)
